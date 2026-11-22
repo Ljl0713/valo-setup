@@ -1,0 +1,32 @@
+# 构建产物
+build/
+build2/
+build3/
+dist/
+dist2/
+dist3/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 源码运行时生成的数据目录
+ValoSetup/
+
+# 运行期产物
+*.log
+*.zip
+*-2.0.0.zip
+
+# 开发期临时脚本与截图
+_*.py
+_*.png
+_*.txt
+
+# 系统
+Thumbs.db
+desktop.ini
+.DS_Store
+视频演讲稿.md
