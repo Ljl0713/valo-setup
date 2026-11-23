@@ -247,6 +247,70 @@ def set_gpu_scaling(on):
     return False, msg
 
 
+# ---------------------------------------------------------------- 监视器设备禁用/启用
+# 教程里「禁用监视器」指在设备管理器禁用「通用即插即用监视器」设备：
+# 让 Windows 不再让显示器自己处理缩放，交给 GPU。需要管理员权限（UAC）。
+
+import base64 as _b64
+import json as _json
+
+PROBLEM_DISABLED = 22      # CM_PROB_DISABLED
+
+
+def _ps(script, timeout=40):
+    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+                       capture_output=True, timeout=timeout,
+                       creationflags=NO_WINDOW)
+    return r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
+
+
+def monitor_device_info():
+    """返回 (friendly_name, instance_id, disabled)；读不到返回 None"""
+    try:
+        out, err = _ps("Get-PnpDevice -Class Monitor | Where-Object Present | "
+                       "ConvertTo-Json -Compress")
+        data = _json.loads(out) if out.strip() else None
+        if isinstance(data, dict):
+            data = [data]
+        if not data:
+            return None
+        # 优先取状态非 Error 的；禁用设备 Status=Error/Problem=22
+        pick = None
+        for d in data:
+            if d.get("Problem") == PROBLEM_DISABLED:
+                pick = d
+                break
+        if pick is None:
+            pick = data[0]
+        return (pick.get("FriendlyName") or "监视器",
+                pick.get("InstanceId"), pick.get("Problem") == PROBLEM_DISABLED)
+    except Exception:
+        return None
+
+
+def set_monitor_disabled(disable, instance_id):
+    """
+    禁用/启用监视器设备。必须走 UAC 提权（用户点「是」），
+    用 EncodedCommand 避免引号嵌套。返回 (ok, msg)
+    """
+    verb = "Disable-PnpDevice" if disable else "Enable-PnpDevice"
+    inner = '%s -InstanceId "%s" -Confirm:$false' % (verb, instance_id)
+    enc = _b64.b64encode(inner.encode("utf-16-le")).decode("ascii")
+    outer = ('Start-Process powershell -Verb runas -Wait -WindowStyle Hidden '
+             '-ArgumentList \'-NoProfile -EncodedCommand %s\'' % enc)
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                            outer], capture_output=True, timeout=120,
+                           creationflags=NO_WINDOW)
+    except Exception as e:      # noqa: BLE001
+        return False, repr(e)
+    # 验证实际状态
+    info = monitor_device_info()
+    if info and info[2] == disable:
+        return True, ("已禁用" if disable else "已启用")
+    return False, ("用户取消了 UAC 或系统拒绝" if r.returncode != 0 else "提交了但状态未变化")
+
+
 # ---------------------------------------------------------------- 结构化条目
 
 def _item(key, label, hint, getter, setter, note=""):
