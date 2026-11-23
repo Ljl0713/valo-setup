@@ -291,10 +291,22 @@ def monitor_device_info():
 def set_monitor_disabled(disable, instance_id):
     """
     禁用/启用监视器设备。必须走 UAC 提权（用户点「是」），
-    用 EncodedCommand 避免引号嵌套。返回 (ok, msg)
+    用 EncodedCommand 避免引号嵌套。提权后 PowerShell 的输出/报错
+    写到 %LOCALAPPDATA%\\ValoSetup\\elevate_result.txt，方便排查。
+    返回 (ok, msg)
     """
+    result_file = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
+                               "ValoSetup", "elevate_result.txt")
+    try:
+        os.makedirs(os.path.dirname(result_file), exist_ok=True)
+        open(result_file, "w").write("")
+    except OSError:
+        pass
     verb = "Disable-PnpDevice" if disable else "Enable-PnpDevice"
-    inner = '%s -InstanceId "%s" -Confirm:$false' % (verb, instance_id)
+    inner = ('try { %s -InstanceId "%s" -Confirm:$false 2>&1 | '
+             'Out-File "%s" -Encoding utf8 } '
+             'catch { $_ | Out-File "%s" -Encoding utf8 }'
+             % (verb, instance_id, result_file, result_file))
     enc = _b64.b64encode(inner.encode("utf-16-le")).decode("ascii")
     outer = ('Start-Process powershell -Verb runas -Wait -WindowStyle Hidden '
              '-ArgumentList \'-NoProfile -EncodedCommand %s\'' % enc)
@@ -304,11 +316,20 @@ def set_monitor_disabled(disable, instance_id):
                            creationflags=NO_WINDOW)
     except Exception as e:      # noqa: BLE001
         return False, repr(e)
+    # 提权命令的真实输出
+    detail = ""
+    try:
+        detail = open(result_file, encoding="utf-8-sig", errors="replace").read().strip()
+    except OSError:
+        pass
     # 验证实际状态
     info = monitor_device_info()
     if info and info[2] == disable:
         return True, ("已禁用" if disable else "已启用")
-    return False, ("用户取消了 UAC 或系统拒绝" if r.returncode != 0 else "提交了但状态未变化")
+    if not detail:
+        return False, ("UAC 未确认或提权命令没有执行"
+                       if r.returncode not in (0,) else "已提交但状态未变化")
+    return False, "错误：" + detail[:200]
 
 
 # ---------------------------------------------------------------- 结构化条目
