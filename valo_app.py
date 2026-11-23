@@ -285,12 +285,11 @@ class App:
                                     font=(FF, max(7, int(8 * s))))
         self.custom_hint.pack(side="left", padx=(self.px(8), 0))
 
-        # 轻拉伸档位：1280×800 是 16:10，比真 4:3 少拉，是另一派打法
-        tk.Button(crow, text="1280×800 轻拉伸", font=(FF, max(7, int(8 * s))),
+        # 教程流派的拉伸档位：不在标准 timing 里，多半要去面板自建一次
+        tk.Button(crow, text="1280×882", font=(FF, max(7, int(8 * s))),
                   bg=CARD2, fg=TXT, activebackground=LINE, activeforeground=TXT,
                   relief="flat", bd=0, cursor="hand2", padx=self.px(10),
-                  command=lambda: self.apply_custom_values(1280, 800)
-                  ).pack(side="left", padx=(self.px(14), 0))
+                  command=self.apply_882).pack(side="left", padx=(self.px(14), 0))
 
         tip = ("1280×960 在 2K 屏上是横向拉伸 1.33 倍，等同 1080p 屏上的 1440×1080。\n"
                "想更宽用 1024×768，想更清晰用 1440×1080。\n"
@@ -638,6 +637,25 @@ class App:
                 text="驱动无此模式；自建要去显卡面板，软件做不到", fg=WARN)
             return
         self.pick_res(w, h)
+
+    def apply_882(self):
+        """1280×882：教程流派的拉伸档。驱动表里有就直接切；没有就引导自建一次"""
+        if (1280, 882) in self.mon["modes"]:
+            self.pick_res(1280, 882)
+            self.say("1280×882 已切换，记得点「去黑边」", "ok")
+            return
+        messagebox.showinfo(
+            "1280×882 需要先自建一次",
+            "这个档位不在驱动的模式表里，Windows 只能切已有的模式，\n"
+            "所以要在显卡面板里建一次（建好永久有效）：\n\n"
+            "NVIDIA：控制面板 → 显示 → 更改分辨率 → 自定义 → 创建自定义分辨率\n"
+            "　　水平像素 1280　垂直扫描线 882\n"
+            "　　刷新率选你屏幕最高那档（如 210）\n"
+            "　　色深 32bit　扫描方式：逐行\n"
+            "　　保存 → 测试 → 是\n\n"
+            "AMD：Software → 显示 → 创建自定义分辨率，填同样的数字\n\n"
+            "建好之后回到这里再点一次「1280×882」，\n"
+            "它会自动切过去，然后点「去黑边」就齐活了。")
 
     def save_native(self):
         c = self.mon["current"] or {}
