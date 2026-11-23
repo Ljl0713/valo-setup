@@ -209,6 +209,29 @@ def open_nvidia_panel():
         return False
 
 
+# ---------------------------------------------------------------- GPU 缩放（禁用显示器缩放）
+
+_target_dev = [None]      # 当前操作的显示器（\Device\DISPLAYx），由 UI 设置
+
+
+def set_target_device(device_name):
+    """UI 切换显示器时调用，让 gpu_scale 知道作用于哪块屏"""
+    _target_dev[0] = device_name
+
+
+def gpu_scaling_on():
+    """缩放是否由 GPU 执行（=「拉伸填充」生效且未被驱动接管）"""
+    m = scaling_modes(_target_dev[0] or None)
+    if not m:
+        return False
+    return SC_STRETCH in m
+
+
+def set_gpu_scaling(on):
+    ok, msg = set_scaling(bool(on), persist=False, device=_target_dev[0] or None)
+    return ok, msg
+
+
 # ---------------------------------------------------------------- 结构化条目
 
 def _item(key, label, hint, getter, setter, note=""):
@@ -217,6 +240,7 @@ def _item(key, label, hint, getter, setter, note=""):
 
 
 def items():
+    """系统优化项：UI 直接遍历渲染成开关，optimize_all 一次全开"""
     return [
         _item("mouse", "关闭鼠标加速",
               "指针移动与手感线性对应，FPS 必做",
@@ -225,15 +249,15 @@ def items():
               "连按 Shift 五下不再弹窗打断游戏",
               lambda: not sticky_hotkeys_on(),
               lambda: set_sticky_hotkeys(True), note="注销后生效"),
-        _item("dvr", "关闭后台录制 GameDVR",
-              "省 CPU / GPU，避免录制抢占",
-              lambda: not gamedvr_on(), lambda: set_gamedvr(True)),
         _item("fse", "关闭全屏优化（真独占）",
               "少一层桌面合成，输入延迟低一档",
               fse_optimized, lambda: set_fse_optimized(True)),
         _item("gamebar", "关掉 Xbox Game Bar 弹窗",
               "Win+G / 手柄 Home 键不再跳出来",
               gamebar_clean, lambda: set_gamebar_clean(True)),
+        _item("gpu_scale", "缩放由 GPU 执行（禁用显示器缩放）",
+              "教程里的「全屏 + GPU」：4:3 拉伸更快更稳",
+              gpu_scaling_on, lambda: set_gpu_scaling(True)),
         _item("gamemode", "Windows 游戏模式",
               "建议开启，让前台游戏优先占用资源",
               gamemode_on, lambda: set_gamemode(True)),

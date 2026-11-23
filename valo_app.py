@@ -16,8 +16,50 @@ import valo_core as core
 import valo_game as game
 import valo_state as state
 import valo_sys as sysx
+import valo_tray
 
 APP_TITLE = "VALO SETUP  ·  无畏契约 4:3 拉伸 & 职业设置"
+
+
+class Tip:
+    """轻量 tooltip：鼠标悬停在小「?」上显示说明，离开即消失"""
+    _win = None
+
+    @classmethod
+    def _hide(cls, *_a):
+        if cls._win is not None:
+            try:
+                if cls._win.winfo_exists():
+                    cls._win.destroy()
+            except Exception:
+                pass
+        cls._win = None
+
+    @classmethod
+    def _show(cls, text, x, y):
+        cls._hide()
+        w = tk.Toplevel()
+        w.wm_overrideredirect(True)
+        sw = w.winfo_screenwidth()
+        sh = w.winfo_screenheight()
+        x = min(x, sw - 380)
+        y = y + 20
+        if y + 160 > sh:
+            y = y - 40
+        w.wm_geometry("+%d+%d" % (max(8, x), max(8, y)))
+        tk.Label(w, text=text, bg="#10131a", fg="#dfe3ea", font=(FF, 9),
+                 justify="left", padx=12, pady=8, wraplength=340,
+                 highlightthickness=1, highlightbackground=LINE).pack()
+        cls._win = w
+
+    @classmethod
+    def bind(cls, widget, text):
+        def enter(_e):
+            cls._show(text, widget.winfo_rootx(),
+                      widget.winfo_rooty() + widget.winfo_height())
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", cls._hide)
+        widget.bind("<Button-1>", cls._hide)
 
 BG = "#0e1014"
 CARD = "#171a21"
@@ -68,6 +110,14 @@ class App:
         self._build()
         self._icon()
         self.root.bind("<F1>", lambda e: self.show_diagnose())
+        self._force_quit = False
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        ico = os.path.join(base, "valo.ico")
+        try:
+            self.tray = valo_tray.Tray(ico if os.path.isfile(ico) else "",
+                                       "VALO SETUP · 无畏契约 4:3 拉伸\n左键恢复窗口，右键菜单")
+        except Exception:
+            self.tray = None
         self.refresh_all()
         self.selfcheck()
         root.after(1200, self.tick)
@@ -337,6 +387,10 @@ class App:
                   activebackground=LINE, relief="flat", bd=0, cursor="hand2",
                   padx=self.px(8), command=self.do_restore).pack(side="left",
                                                                  padx=(0, self.px(6)))
+        tk.Button(btns, text="扫描", font=(FF, max(8, int(9 * s))), bg=CARD2, fg=TXT,
+                  activebackground=LINE, relief="flat", bd=0, cursor="hand2",
+                  padx=self.px(8), command=self.rescan_paths).pack(side="left",
+                                                                  padx=(0, self.px(6)))
         tk.Button(btns, text="选路径", font=(FF, max(8, int(9 * s))), bg=CARD2, fg=SUB,
                   activebackground=LINE, relief="flat", bd=0, cursor="hand2",
                   padx=self.px(8), command=self.pick_folder).pack(side="left")
@@ -350,14 +404,15 @@ class App:
             f.pack(fill="x", padx=self.px(14), pady=self.px(2))
             tk.Label(f, text=it["label"], bg=CARD, fg=TXT,
                      font=(FF, max(8, int(9 * s))), anchor="w").pack(side="left")
+            q = tk.Label(f, text=" ?", bg=CARD, fg=DIM,
+                         font=(FF, max(7, int(8 * s))), cursor="hand2")
+            q.pack(side="left")
+            Tip.bind(q, it["hint"] + (("\n\n注意：" + it["note"]) if it.get("note") else ""))
             b = tk.Button(f, text="", font=(FF, max(7, int(8 * s))), bg=CARD2, fg=SUB,
-                          relief="flat", bd=0, cursor="hand2", width=7,
+                          relief="flat", bd=0, cursor="hand2", width=5,
                           command=lambda k=it["key"]: self.flip(k))
             b.pack(side="right")
             self.sys_rows[it["key"]] = b
-            tk.Label(f, text=it["hint"], bg=CARD, fg=DIM,
-                     font=(FF, max(7, int(8 * s))), anchor="w").pack(
-                side="left", padx=(self.px(8), 0))
 
         prow = tk.Frame(c4, bg=CARD)
         prow.pack(fill="x", padx=self.px(14), pady=(self.px(6), self.px(4)))
@@ -379,17 +434,21 @@ class App:
         # ---------------- 右：提示
         c5 = Card(right, "还有黑边？")
         c5.pack(fill="both", expand=True, pady=(self.px(10), 0))
-        txt = ("先点左边的「去黑边」。\n"
-               "它会自动做完三件事：切 4:3、把显卡缩放设成拉伸、\n"
-               "关掉游戏配置里的黑边开关。\n"
-               "大多数机器到这一步就铺满了。\n\n"
-               "还是没铺满，再点下面这个按钮，\n"
-               "按里面的顺序一条条查。")
-        tk.Label(c5, text=txt, bg=CARD, fg=SUB, font=(FF, max(8, int(9 * s))),
-                 justify="left", anchor="w",
-                 wraplength=self.px(430)).pack(fill="x", padx=self.px(14),
-                                               pady=(0, self.px(4)))
-        tk.Button(c5, text="点过去黑边还是没铺满？点这里",
+        rowq = tk.Frame(c5, bg=CARD)
+        rowq.pack(fill="x", padx=self.px(14), pady=(self.px(2), self.px(8)))
+        tk.Label(rowq, text="先点「去黑边」，多数机器就此铺满", bg=CARD, fg=SUB,
+                 font=(FF, max(8, int(9 * s))), anchor="w").pack(side="left")
+        q5 = tk.Label(rowq, text=" ?", bg=CARD, fg=DIM,
+                      font=(FF, max(8, int(9 * s))), cursor="hand2")
+        q5.pack(side="left")
+        Tip.bind(q5, "「去黑边」会自动做完三件事：\n"
+                 "① 切到 4:3\n"
+                 "② 把显卡缩放设成「拉伸填充」——等效教程里的「全屏 + GPU、"
+                 "禁用显示器缩放」\n"
+                 "③ 关掉游戏配置里的 letterbox\n\n"
+                 "做完重启游戏，大多数机器就铺满了。\n"
+                 "还是没铺满 → 点下面按钮，按顺序排查。")
+        tk.Button(c5, text="没铺满？点这里排查",
                   font=(FF, max(7, int(8 * s))), bg=CARD2, fg=WARN,
                   activebackground=LINE, activeforeground=WARN, relief="flat",
                   bd=0, cursor="hand2", anchor="w",
@@ -397,11 +456,21 @@ class App:
                                                          padx=self.px(14),
                                                          pady=(0, self.px(6)))
         self.top_var = tk.BooleanVar(value=bool(self.conf.get("topmost")))
-        tk.Checkbutton(c5, text="窗口置顶（方便边玩边点）", variable=self.top_var,
-                       bg=CARD, fg=SUB, selectcolor=CARD2, activebackground=CARD,
-                       activeforeground=TXT, font=(FF, max(8, int(9 * s))), bd=0,
-                       highlightthickness=0, command=self.on_top).pack(
-            anchor="w", padx=self.px(12))
+        crow_top = tk.Frame(c5, bg=CARD)
+        crow_top.pack(fill="x", padx=self.px(12), pady=(0, self.px(4)))
+        self.top_cb = tk.Checkbutton(crow_top, text="窗口置顶", variable=self.top_var,
+                                     bg=CARD, fg=SUB, selectcolor=CARD2,
+                                     activebackground=CARD, activeforeground=TXT,
+                                     font=(FF, max(8, int(9 * s))), bd=0,
+                                     highlightthickness=0, cursor="hand2",
+                                     command=self.on_top).pack(side="left")
+        q6 = tk.Label(crow_top, text=" ?", bg=CARD, fg=DIM,
+                      font=(FF, max(7, int(8 * s))), cursor="hand2")
+        q6.pack(side="left")
+        Tip.bind(q6, "窗口永远浮在其他窗口上面，\n"
+                 "方便游戏里按 Alt+Tab 回来看设置。\n\n"
+                 "点 × 会隐藏到系统托盘（后台继续自动切换），\n"
+                 "托盘左键恢复、右键退出。")
 
     # ------------------------------------------------------------ 日志
 
@@ -530,10 +599,11 @@ class App:
             fg=DIM if ok else WARN)
 
     def refresh_sys(self):
+        sysx.set_target_device((self.mon or {}).get("device"))
         st = sysx.state()
         for k, b in self.sys_rows.items():
             on = st.get(k)
-            b.configure(text="✓ 已优化" if on else "未优化",
+            b.configure(text="开" if on else "关",
                         bg="#16302a" if on else CARD2,
                         fg=OKC if on else SUB)
         self.power_lbl.configure(text="电源计划  " + st.get("_power", "未知"))
@@ -681,19 +751,21 @@ class App:
 
     # ------------------------------------------------------------ 动作：游戏配置
 
-    def write_game(self):
-        if game.game_running():
-            self.say("游戏正在运行，先完全退出再写入（否则退出时会被覆盖）", "err")
+    def write_game(self, silent=False, force=False):
+        if not force and game.game_running():
+            self._msg("游戏正在运行，先完全退出再写入（否则退出时会被覆盖）",
+                      "err", silent)
             return
         gi = self.game["game_ini"]
         if not gi:
-            self.say("没有找到 GameUserSettings.ini，无法写入", "err")
+            self._msg("没有找到 GameUserSettings.ini，无法写入（点「扫描配置」或「手动选择」）",
+                      "err", silent)
             return
         ui = game.pick_user_ini(self.game["user_inis"], self.conf.get("user_ini"))
         paths = [gi] + ([ui] if ui else [])
         bk = game.backup(paths, state.BACKUP_DIR, int(self.conf.get("backup_keep", 10)))
         if bk:
-            self.say("已备份 → %s" % os.path.basename(bk), "ok")
+            self._msg("已备份 → %s" % os.path.basename(bk), "ok", silent)
         g = self.conf["game"]
         expect = game.apply_display(
             gi, g["w"], g["h"],
@@ -702,20 +774,56 @@ class App:
             stretch=self.opt["stretch"].get(),
             unlock_fps=self.opt["fps"].get())
         good, bad = game.verify(gi, expect)
-        self.say("显示设置 %d 项写入%s" % (len(expect), "，回读一致" if good else
-                                       "，回读不一致：" + ",".join(bad)),
-                 "ok" if good else "err")
+        self._msg("显示设置 %d 项写入%s" % (len(expect), "，回读一致" if good else
+                                      "，回读不一致：" + ",".join(bad)),
+                  "ok" if good else "err", silent)
         if ui:
             kv = game.apply_quality(ui, quality_pro=self.opt["lowq"].get(),
                                     reflex=self.opt["reflex"].get())
             g2, bad2 = game.verify(ui, kv)
-            self.say("画质设置 %d 项写入%s" % (len(kv), "，回读一致" if g2 else
-                                           "，回读不一致：" + ",".join(bad2)),
-                     "ok" if g2 else "err")
+            self._msg("画质设置 %d 项写入%s" % (len(kv), "，回读一致" if g2 else
+                                          "，回读不一致：" + ",".join(bad2)),
+                      "ok" if g2 else "err", silent)
         else:
-            self.say("没找到画质配置文件（RiotUserSettings.ini），只写了显示部分", "warn")
+            self._msg("没找到画质配置文件（RiotUserSettings.ini），只写了显示部分",
+                      "warn", silent)
         self.refresh_ini_label()
         self.refresh_banner()
+
+    def _msg(self, text, level="ok", silent=False):
+        if silent:
+            state.log(text)
+        else:
+            self.say(text, level)
+
+    def rescan_paths(self):
+        """重新扫描游戏配置路径，解决「找不到配置」"""
+        self.game = game.discover()
+        self.conf["monitor_id"] = self.mon["monitor_id"] if self.mon else None
+        state.save(self.conf)
+        if self.game["game_ini"]:
+            self.say("找到游戏配置：\n  %s" % self.game["game_ini"], "ok")
+            if self.game["user_inis"]:
+                self.say("  画质配置 %d 份（多账号取最近修改）" % len(self.game["user_inis"]),
+                         "ok")
+        else:
+            self.say("还是没找到。点「手动选择」指一下文件，或确认游戏装在哪", "warn")
+        self.refresh_ini_label()
+
+    def pick_ini_manual(self):
+        p = filedialog.askopenfilename(
+            title="选择 GameUserSettings.ini",
+            filetypes=[("INI 配置", "*.ini"), ("所有文件", "*.*")])
+        if not p:
+            return
+        if os.path.basename(p).lower() == "riotusersettings.ini":
+            self.conf["user_ini"] = p
+            state.save(self.conf)
+            self.say("画质配置已手动指定", "ok")
+        else:
+            self.game["game_ini"] = p
+            self.say("游戏显示配置已手动指定（重装/换账号后记得重扫）", "ok")
+        self.refresh_ini_label()
 
     def do_backup(self):
         ui = game.pick_user_ini(self.game["user_inis"], self.conf.get("user_ini"))
@@ -971,6 +1079,7 @@ class App:
 
     def tick(self):
         try:
+            self.handle_tray()
             running = game.game_running()
             if self.auto_var.get() and running != self._last_game:
                 self._last_game = running
@@ -978,10 +1087,14 @@ class App:
                 c = (self.mon["current"] or {}) if self.mon else {}
                 if running and (c.get("w"), c.get("h")) != (g["w"], g["h"]):
                     self.apply_mode(g["w"], g["h"], g.get("hz"), "检测到游戏启动")
+                    # 早期写一次配置（force）：游戏启动瞬间读的是 ini，晚了就被内存覆盖
+                    self.write_game(silent=True, force=True)
                 elif not running and (c.get("w"), c.get("h")) == (g["w"], g["h"]):
                     n = self.conf.get("native") or {}
                     if n.get("w"):
                         self.apply_mode(n["w"], n["h"], n.get("hz"), "游戏已退出")
+                    # 游戏退出后重写配置：退出时内存值会覆盖 ini，重写保证下次进游戏还是 4:3
+                    self.write_game(silent=True, force=True)
             else:
                 self._last_game = running
             if self.mon:
@@ -1164,13 +1277,35 @@ class App:
     # ------------------------------------------------------------ 退出 / 异常
 
     def on_close(self):
-        if self.auto_var.get() and not self._closing:
+        """点 ×：默认隐藏到托盘（首次询问），真退出走托盘菜单"""
+        if self._force_quit:
+            self._quit_now()
+            return
+        if self.conf.get("close_to_tray") is None:
+            r = messagebox.askyesno(
+                "最小化到托盘？",
+                "点 × 时最小化到系统托盘，后台继续帮你自动切换？\n\n"
+                "是：以后点 × 都藏到托盘（托盘左键恢复、右键退出）\n"
+                "否：点 × 直接退出")
+            self.conf["close_to_tray"] = bool(r)
+            state.save(self.conf)
+        if self.conf.get("close_to_tray"):
+            self.root.withdraw()
+            return
+        if self.auto_var.get():
             if not messagebox.askyesno(
                     "确认退出",
                     "「自动切换」需要程序一直运行。\n"
                     "关掉它，以后进游戏就不会自动切成 4:3 了。\n\n仍然退出？"):
                 return
+        self._quit_now()
+
+    def _quit_now(self):
         self._closing = True
+        try:
+            self.tray.stop()
+        except Exception:
+            pass
         # 退出前还原分辨率：否则关机时系统会把 4:3 记成"上次状态"，下次开机卡在 4:3
         try:
             if self.mon:
@@ -1195,6 +1330,38 @@ class App:
         except Exception:
             pass
         self.root.destroy()
+
+    def show_from_tray(self):
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def handle_tray(self):
+        act = getattr(self, "tray", None) and self.tray.pop_action()
+        if not act:
+            return
+        if act == "left":
+            self.show_from_tray()
+        elif act == "right":
+            m = tk.Menu(self.root, tearoff=0, bg=CARD2, fg=TXT,
+                        activebackground=LINE, activeforeground=TXT, bd=1)
+            m.add_command(label="显示窗口", command=self.show_from_tray)
+            m.add_command(label="去黑边", command=self.one_tap_letterbox)
+            m.add_separator()
+            m.add_command(label="退出", command=self.ask_quit_from_tray)
+            try:
+                m.tk_popup(self.tray.menu_x, self.tray.menu_y)
+            finally:
+                m.grab_release()
+
+    def ask_quit_from_tray(self):
+        if self.auto_var.get() and not messagebox.askyesno(
+                "确认退出",
+                "「自动切换」需要程序一直运行。\n"
+                "关掉它，以后进游戏就不会自动切成 4:3 了。\n\n仍然退出？"):
+            return
+        self._force_quit = True
+        self._quit_now()
 
     def on_tk_error(self, exc, val, tb):
         text = traceback.format_exception(exc, val, tb)
