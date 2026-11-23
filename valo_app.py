@@ -285,6 +285,13 @@ class App:
                                     font=(FF, max(7, int(8 * s))))
         self.custom_hint.pack(side="left", padx=(self.px(8), 0))
 
+        # 轻拉伸档位：1280×800 是 16:10，比真 4:3 少拉，是另一派打法
+        tk.Button(crow, text="1280×800 轻拉伸", font=(FF, max(7, int(8 * s))),
+                  bg=CARD2, fg=TXT, activebackground=LINE, activeforeground=TXT,
+                  relief="flat", bd=0, cursor="hand2", padx=self.px(10),
+                  command=lambda: self.apply_custom_values(1280, 800)
+                  ).pack(side="left", padx=(self.px(14), 0))
+
         tip = ("1280×960 在 2K 屏上是横向拉伸 1.33 倍，等同 1080p 屏上的 1440×1080。\n"
                "想更宽用 1024×768，想更清晰用 1440×1080。\n"
                "切完如果左右有黑边，点上面的「去黑边」，不是分辨率的问题。")
@@ -520,7 +527,7 @@ class App:
         self.ch.insert(0, str(g["h"]))
         ok = (g["w"], g["h"]) in modes
         self.custom_hint.configure(
-            text="" if ok else "驱动无此模式，需先在显卡面板添加",
+            text="" if ok else "驱动无此模式；自建要去显卡面板，软件做不到",
             fg=DIM if ok else WARN)
 
     def refresh_sys(self):
@@ -616,12 +623,19 @@ class App:
         except ValueError:
             self.say("自定义分辨率要填两个数字", "err")
             return
+        self.apply_custom_values(w, h)
+
+    def apply_custom_values(self, w, h):
+        """直接提交一个档位（含预设 1280×800）。不在驱动模式表里时给明确出路"""
         if not (320 <= w <= 7680 and 200 <= h <= 4320):
             self.say("分辨率超出合理范围", "err")
             return
         if (w, h) not in self.mon["modes"]:
-            self.say("驱动不提供 %d×%d：请先在显卡控制面板里添加这个分辨率，再回来点应用" % (w, h), "err")
-            self.custom_hint.configure(text="驱动无此模式，需先在显卡面板添加", fg=WARN)
+            self.say("驱动不提供 %d×%d：Windows API 只能切驱动已有的模式，"
+                     "要自建得去显卡面板加（有的教程就是这么教的），加完再回来应用"
+                     % (w, h), "err")
+            self.custom_hint.configure(
+                text="驱动无此模式；自建要去显卡面板，软件做不到", fg=WARN)
             return
         self.pick_res(w, h)
 
