@@ -244,6 +244,18 @@ def list_backups(root):
     return [os.path.join(root, d) for d in subs]
 
 
+def latest_backup(root):
+    """返回最近一次的备份目录，没有就 None"""
+    if not os.path.isdir(root):
+        return None
+    dirs = [os.path.join(root, d) for d in os.listdir(root)
+            if os.path.isdir(os.path.join(root, d))]
+    if not dirs:
+        return None
+    dirs.sort(key=os.path.getmtime, reverse=True)
+    return dirs[0]
+
+
 def restore(backup_dir, game_ini, user_ini):
     n = 0
     for name, target in (("GameUserSettings.ini", game_ini),
@@ -260,16 +272,29 @@ def restore(backup_dir, game_ini, user_ini):
 SECTION_GAME = "/Script/ShooterGame.ShooterGameUserSettings"
 
 # 画质档位：0 低 / 1 中 / 2 高 / 3 极高
-QUALITY_PRO = {
+# CORE：这几项在所有版本里都存在，直接写
+QUALITY_CORE = {
     "EAresIntSettingName::DetailQuality": "0",
     "EAresIntSettingName::MaterialQuality": "0",
     "EAresIntSettingName::TextureQuality": "0",
-    "EAresIntSettingName::AntiAliasing": "0",
-    "EAresIntSettingName::AnisotropicFiltering": "1",
+    "EAresIntSettingName::AntiAliasing": "0",          # MSAA 关
+    "EAresIntSettingName::AnisotropicFiltering": "1",  # 1x
     "EAresBoolSettingName::ShadowsEnabled": "False",
-    "EAresBoolSettingName::ImproveClarity": "True",
-    "EAresIntSettingName::NvidiaReflexLowLatencySetting": "2",
+    "EAresBoolSettingName::ImproveClarity": "True",    # 改善清晰度
+    "EAresIntSettingName::NvidiaReflexLowLatencySetting": "2",   # 开 + 加速
 }
+
+# EXTRA：默认值就是"关/开"的那些项。玩家没动过设置时 ini 里不会有这些键，
+# 所以不能"存在才写"——必须主动补上，游戏就会按这里的值走。
+QUALITY_EXTRA = {
+    "EAresBoolSettingName::BloomEnabled": "False",           # 泛光：关，看清敌人
+    "EAresBoolSettingName::DistortionEnabled": "False",      # 失真：关
+    "EAresBoolSettingName::VignetteEnabled": "False",        # 暗角：关
+    "EAresBoolSettingName::ExperimentalSharpening": "True",  # 实验性锐化：开
+    "EAresFloatSettingName::ResolutionQuality": "100.000000",  # 渲染缩放 100%
+}
+
+QUALITY_PRO = dict(QUALITY_CORE, **QUALITY_EXTRA)
 
 QUALITY_KEYS = [
     ("DetailQuality", "细节质量", ["低", "中", "高", "极高"]),
@@ -278,6 +303,17 @@ QUALITY_KEYS = [
     ("AntiAliasing", "抗锯齿", ["关", "MSAA 2x", "MSAA 4x", "MSAA 8x"]),
     ("AnisotropicFiltering", "各向异性过滤", ["1x", "2x", "4x", "8x", "16x"]),
 ]
+
+
+def quality_report(user_ini):
+    """看这台机器的 ini 里到底有哪些画质键，用于「诊断」和写入前判断"""
+    if not user_ini or not os.path.isfile(user_ini):
+        return {"ok": False, "core": [], "extra": [], "missing": []}
+    txt, _bom = _read_text(user_ini)
+    core = [k for k in QUALITY_CORE if k in txt]
+    extra = [k for k in QUALITY_EXTRA if k in txt]
+    missing = [k for k in QUALITY_CORE if k not in txt]
+    return {"ok": True, "core": core, "extra": extra, "missing": missing}
 
 
 def apply_display(game_ini, w, h, fullscreen=True, no_vsync=True,
@@ -303,10 +339,15 @@ def apply_display(game_ini, w, h, fullscreen=True, no_vsync=True,
 
 
 def apply_quality(user_ini, quality_pro=True, reflex=True):
+    """
+    写画质。CORE + EXTRA 全写——玩家没动过的项在 ini 里本来就没有，
+    不主动补就等于不生效。键名不对时游戏会忽略，不会出问题。
+    """
     kv = {}
     if reflex:
         kv["EAresIntSettingName::NvidiaReflexLowLatencySetting"] = "2"
     if quality_pro:
-        kv.update(QUALITY_PRO)
+        kv.update(QUALITY_CORE)
+        kv.update(QUALITY_EXTRA)
     write_ini(user_ini, kv, "Settings")
     return kv

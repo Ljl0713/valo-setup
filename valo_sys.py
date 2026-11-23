@@ -103,6 +103,36 @@ def set_gamemode(on):
     reg_set(GAMEBAR, "AutoGameModeEnabled", 1 if on else 0, winreg.REG_DWORD)
 
 
+# ---------------------------------------------------------------- 全屏独占
+
+FSE_KEY = r"System\GameConfigStore"
+
+
+def fse_optimized():
+    """已关掉 Windows 的全屏优化（真独占）"""
+    return _as_int(reg_get(FSE_KEY, "GameDVR_DXGIHonorFSEWindowsCompatible"), 0) == 1
+
+
+def set_fse_optimized(on):
+    """关掉「全屏优化」：游戏走真独占，少一层 DWM 合成，输入延迟低一档"""
+    reg_set(FSE_KEY, "GameDVR_DXGIHonorFSEWindowsCompatible",
+            1 if on else 0, winreg.REG_DWORD)
+    reg_set(FSE_KEY, "GameDVR_FSEBehaviorMode", 2 if on else 0, winreg.REG_DWORD)
+
+
+# ---------------------------------------------------------------- Xbox Game Bar
+
+def gamebar_clean():
+    """Xbox Game Bar 的启动面板 / Nexus 已关闭"""
+    return _as_int(reg_get(GAMEBAR, "ShowStartupPanel"), 1) == 0
+
+
+def set_gamebar_clean(on):
+    v = 0 if on else 1
+    reg_set(GAMEBAR, "ShowStartupPanel", v, winreg.REG_DWORD)
+    reg_set(GAMEBAR, "UseNexusForGameBarEnabled", 1 - v, winreg.REG_DWORD)
+
+
 # ---------------------------------------------------------------- 电源计划
 
 def current_power():
@@ -198,6 +228,12 @@ def items():
         _item("dvr", "关闭后台录制 GameDVR",
               "省 CPU / GPU，避免录制抢占",
               lambda: not gamedvr_on(), lambda: set_gamedvr(True)),
+        _item("fse", "关闭全屏优化（真独占）",
+              "少一层桌面合成，输入延迟低一档",
+              fse_optimized, lambda: set_fse_optimized(True)),
+        _item("gamebar", "关掉 Xbox Game Bar 弹窗",
+              "Win+G / 手柄 Home 键不再跳出来",
+              gamebar_clean, lambda: set_gamebar_clean(True)),
         _item("gamemode", "Windows 游戏模式",
               "建议开启，让前台游戏优先占用资源",
               gamemode_on, lambda: set_gamemode(True)),
@@ -228,4 +264,69 @@ def optimize_all():
     if plan:
         good, msg = set_power_plan(plan)
         detail.append("电源计划 → %s" % (msg if good else "失败 " + str(msg)))
+    return ok, detail
+
+
+# ---------------------------------------------------------------- 还原
+
+BALANCED_GUID = "381b4222-f694-41f0-9685-ff5bb260df2e"   # Windows 默认「平衡」
+
+
+def set_power_plan_guid(guid, name=""):
+    try:
+        r = subprocess.run(["powercfg", "/setactive", guid], capture_output=True,
+                           creationflags=NO_WINDOW, timeout=8)
+        return r.returncode == 0, (name or guid)
+    except Exception as e:
+        return False, repr(e)
+
+
+def snapshot():
+    """
+    记录「用户原来的样子」。真正的恢复默认应该回到用户自己的原值，
+    而不是微软出厂值——第一次优化前存一份，以后一直用它还原。
+    """
+    try:
+        return {"mouse_accel": mouse_accel_on(),
+                "sticky_hotkeys": sticky_hotkeys_on(),
+                "gamedvr": gamedvr_on(),
+                "fse": fse_optimized(),
+                "gamebar": gamebar_clean(),
+                "gamemode": gamemode_on(),
+                "power": current_power()}
+    except Exception:
+        return {}
+
+
+def apply_snapshot(snap=None):
+    """按快照还原；没有快照时退回 Windows 出厂默认。返回 (成功数, 明细)"""
+    snap = snap or {}
+    ok, detail = 0, []
+
+    def _try(label, fn):
+        nonlocal ok
+        try:
+            fn()
+            ok += 1
+        except Exception as e:      # noqa: BLE001
+            detail.append("%s 失败: %r" % (label, e))
+
+    _try("鼠标加速", lambda: set_mouse_accel(not snap.get("mouse_accel", True)))
+    _try("粘滞键快捷键", lambda: set_sticky_hotkeys(not snap.get("sticky_hotkeys", True)))
+    _try("GameDVR", lambda: set_gamedvr(not snap.get("gamedvr", True)))
+    _try("全屏优化", lambda: set_fse_optimized(bool(snap.get("fse", False))))
+    _try("GameBar", lambda: set_gamebar_clean(bool(snap.get("gamebar", False))))
+    _try("游戏模式", lambda: set_gamemode(bool(snap.get("gamemode", True))))
+
+    plan = snap.get("power")
+    if plan and plan not in ("未知", ""):
+        good, msg = set_power_plan(plan)
+        if not good:
+            good, msg = set_power_plan_guid(BALANCED_GUID, "平衡")
+        detail.append("电源计划 → %s" % (msg if good else "失败"))
+    else:
+        good, msg = set_power_plan_guid(BALANCED_GUID, "平衡")
+        if not good:
+            good, msg = set_power_plan("平衡")
+        detail.append("电源计划 → %s" % (msg if good else "失败"))
     return ok, detail

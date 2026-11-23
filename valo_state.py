@@ -77,9 +77,14 @@ def log_tail(n=80):
 
 # ---------------------------------------------------------------- 配置
 
+def fresh():
+    """深拷贝一份默认配置——浅拷贝会让 DEFAULTS 被就地改掉"""
+    return json.loads(json.dumps(DEFAULTS))
+
+
 def _migrate(d):
     """v1 没有 schema 字段，结构基本兼容，补齐默认值即可。"""
-    out = dict(DEFAULTS)
+    out = fresh()
     out.update(d or {})
     out["schema"] = SCHEMA
     g = out.get("game") or {}
@@ -95,7 +100,7 @@ def _migrate(d):
 
 def load():
     if not os.path.isfile(CONF_PATH):
-        return dict(DEFAULTS)
+        return fresh()
     try:
         with open(CONF_PATH, "r", encoding="utf-8") as f:
             raw = json.load(f)
@@ -112,7 +117,7 @@ def load():
         except OSError:
             pass
         log("配置读取失败，已重建：%r（备份 %s）" % (e, bad))
-        conf = dict(DEFAULTS)
+        conf = fresh()
         save(conf)
         return conf
 

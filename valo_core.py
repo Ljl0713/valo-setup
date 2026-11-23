@@ -296,3 +296,214 @@ def restore(m, mode):
     if not m or not mode:
         return False, "无恢复目标"
     return set_mode(m, mode["w"], mode["h"], mode.get("hz"))
+
+
+# ---------------------------------------------------------------- 缩放模式（黑边根因）
+
+# Windows DisplayConfig：4:3 要铺满屏幕，除了游戏里关 letterbox，
+# 还要让显卡把 1280×960 的输出拉伸到面板原生尺寸。
+
+import ctypes as _ct
+from ctypes import wintypes as _wt
+
+
+class _LUID(_ct.Structure):
+    _fields_ = [("LowPart", _wt.DWORD), ("HighPart", _wt.LONG)]
+
+
+class _RATIONAL(_ct.Structure):
+    _fields_ = [("Numerator", _wt.UINT), ("Denominator", _wt.UINT)]
+
+
+class _SRCINFO(_ct.Structure):
+    _fields_ = [("adapterId", _LUID), ("id", _wt.UINT),
+                ("modeInfoIdx", _wt.UINT), ("statusFlags", _wt.UINT)]
+
+
+class _TGTINFO(_ct.Structure):
+    _fields_ = [("adapterId", _LUID), ("id", _wt.UINT),
+                ("modeInfoIdx", _wt.UINT), ("outputTechnology", _wt.UINT),
+                ("rotation", _wt.UINT), ("scaling", _wt.UINT),
+                ("refreshRate", _RATIONAL), ("scanLineOrdering", _wt.UINT),
+                ("targetAvailable", _wt.BOOL), ("statusFlags", _wt.UINT)]
+
+
+class _PATHINFO(_ct.Structure):
+    _fields_ = [("sourceInfo", _SRCINFO), ("targetInfo", _TGTINFO),
+                ("flags", _wt.UINT)]
+
+
+class _DIV_HEADER(_ct.Structure):
+    _fields_ = [("type", _wt.UINT), ("size", _wt.UINT),
+                ("adapterId", _LUID), ("id", _wt.UINT)]
+
+
+class _SRC_DEVICE_NAME(_ct.Structure):
+    _fields_ = [("header", _DIV_HEADER), ("viewGdiDeviceName", _wt.WCHAR * 32)]
+
+
+DC_GET_SOURCE_NAME = 1
+
+
+SCALING_NAMES = {0: "未知", 1: "不缩放", 2: "居中", 3: "拉伸填充",
+                 4: "保持比例（会出黑边）", 5: "自定义", 128: "驱动默认"}
+SC_IDENTITY, SC_CENTERED, SC_STRETCH, SC_ASPECT = 1, 2, 3, 4
+
+_QDC_ACTIVE = 0x00000002
+_SDC_APPLY = 0x00000080
+_SDC_USE_SUPPLIED = 0x00000020
+_SDC_SAVE = 0x00000200
+_SDC_ALLOW_CHANGES = 0x00000400
+_MODE_SZ = 256
+
+user32.GetDisplayConfigBufferSizes.argtypes = [_wt.UINT, _ct.POINTER(_wt.UINT),
+                                               _ct.POINTER(_wt.UINT)]
+user32.GetDisplayConfigBufferSizes.restype = _wt.LONG
+user32.QueryDisplayConfig.argtypes = [_wt.UINT, _ct.POINTER(_wt.UINT),
+                                      _ct.POINTER(_PATHINFO), _ct.POINTER(_wt.UINT),
+                                      _ct.c_void_p, _ct.c_void_p]
+user32.QueryDisplayConfig.restype = _wt.LONG
+user32.SetDisplayConfig.argtypes = [_wt.UINT, _ct.POINTER(_PATHINFO), _wt.UINT,
+                                    _ct.c_void_p, _wt.UINT]
+user32.SetDisplayConfig.restype = _wt.LONG
+user32.DisplayConfigGetDeviceInfo.argtypes = [_ct.c_void_p]
+user32.DisplayConfigGetDeviceInfo.restype = _wt.LONG
+
+
+def _query_paths():
+    n, m = _wt.UINT(), _wt.UINT()
+    if user32.GetDisplayConfigBufferSizes(_QDC_ACTIVE, _ct.byref(n), _ct.byref(m)):
+        return None
+    paths = (_PATHINFO * n.value)()
+    modes = (_ct.c_byte * (_MODE_SZ * m.value))()
+    if user32.QueryDisplayConfig(_QDC_ACTIVE, _ct.byref(n), paths,
+                                 _ct.byref(m), modes, None):
+        return None
+    return paths, n.value, modes, m.value
+
+
+def _gdi_name_of(path):
+    s = _SRC_DEVICE_NAME()
+    s.header.type = DC_GET_SOURCE_NAME
+    s.header.size = _ct.sizeof(_SRC_DEVICE_NAME)
+    s.header.adapterId = path.sourceInfo.adapterId
+    s.header.id = path.sourceInfo.id
+    if user32.DisplayConfigGetDeviceInfo(_ct.byref(s)) != 0:
+        return None
+    return s.viewGdiDeviceName or None
+
+
+def scaling_modes(device=None):
+    """
+    读缩放模式。device 传 "\\\\.\\DISPLAY1" 时只读那块屏。
+    返回 [值,...]；读不到返回 None。
+    """
+    got = _query_paths()
+    if not got:
+        return None
+    paths, n, _modes, _m = got
+    out = []
+    for i in range(n):
+        if device:
+            name = _gdi_name_of(paths[i])
+            if name and name.upper() != device.upper():
+                continue
+        out.append(paths[i].targetInfo.scaling)
+    return out
+
+
+def scaling_summary(device=None):
+    got = scaling_modes(device)
+    if got is None:
+        return "读不到"
+    if not got:
+        return "该显示器无活动路径"
+    return " / ".join(SCALING_NAMES.get(v, str(v)) for v in got)
+
+
+def set_scaling(stretch=True, persist=False, device=None):
+    """
+    设置缩放模式：True=拉伸填充（去黑边），False=不缩放。
+    device 指定 "\\\\.\\DISPLAY1" 时**只改那一块屏**——多显示器必须这样，
+    否则会把副屏一起改掉。
+    返回 (ok, msg)。
+    """
+    got = _query_paths()
+    if not got:
+        return False, "读不到显示配置"
+    paths, n, modes, m = got
+    want = SC_STRETCH if stretch else SC_IDENTITY
+    need, hit = 0, 0
+    for i in range(n):
+        if device:
+            name = _gdi_name_of(paths[i])
+            if not name or name.upper() != device.upper():
+                continue
+        hit += 1
+        if paths[i].targetInfo.scaling != want:
+            paths[i].targetInfo.scaling = want
+            need += 1
+    if not hit and n == 1:
+        # 老系统上取不到设备名时兜底：只有一条显示路径就直接改它
+        hit = 1
+        if paths[0].targetInfo.scaling != want:
+            paths[0].targetInfo.scaling = want
+            need = 1
+    if not hit:
+        return False, "找不到目标显示器（%s）的显示路径" % (device or "全部")
+    if not need:
+        return True, "已经是目标缩放（%s）" % SCALING_NAMES.get(want)
+    flags = _SDC_APPLY | _SDC_USE_SUPPLIED | _SDC_ALLOW_CHANGES
+    if persist:
+        flags |= _SDC_SAVE
+    rc = user32.SetDisplayConfig(n, paths, m, modes, flags)
+    if rc != 0:
+        return False, "系统拒绝了缩放变更（代码 %d）" % rc
+    after = scaling_modes(device) or []
+    if want in after:
+        return True, "缩放已设为%s" % SCALING_NAMES.get(want)
+    return False, "已提交但未生效（当前：%s），可能被显卡驱动接管" % scaling_summary(device)
+
+
+def gpu_vendor(m):
+    """判断显卡厂商，用来给不同的手动操作指引"""
+    a = ((m or {}).get("adapter") or "").lower()
+    for key, name in (("nvidia", "nvidia"), ("geforce", "nvidia"),
+                      ("radeon", "amd"), ("amd", "amd"), ("ati ", "amd"),
+                      ("intel", "intel"), ("arc", "intel")):
+        if key in a:
+            return name
+    return "unknown"
+
+
+def resolve_mode(m, w, h):
+    """
+    把「用户要求的 4:3」落到这台机器真的支持的档位上。
+    1280×960 在别人的驱动里可能不存在，这里退到最接近的可用 4:3。
+    返回 (w, h, 是否原样)。
+    """
+    if not m:
+        return w, h, True
+    modes = m["modes"]
+    if (w, h) in modes:
+        return w, h, True
+    want_area = w * h
+    best = None
+    for (mw, mh) in modes:
+        if is_43(mw, mh) and mw >= 1024:
+            if best is None or abs(mw * mh - want_area) < abs(best[0] * best[1] - want_area):
+                best = (mw, mh)
+    if best:
+        return best[0], best[1], False
+    return w, h, True
+
+
+def fix_letterbox(m, w, h, hz=None, persist=False):
+    """一键去黑边：切到可用 4:3 + 把缩放设成拉伸填充（只动这块屏）"""
+    rw, rh, exact = resolve_mode(m, w, h)
+    ok, msg = set_mode(m, rw, rh, hz, persist=persist)
+    if not ok:
+        return False, msg, (rw, rh)
+    sok, smsg = set_scaling(True, persist=False, device=m.get("device"))
+    note = "" if exact else "（%d×%d 你的驱动没有，已换成 %d×%d）" % (w, h, rw, rh)
+    return True, "%s；%s%s" % (msg, smsg, note), (rw, rh)

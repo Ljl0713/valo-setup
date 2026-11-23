@@ -69,6 +69,7 @@ class App:
         self._icon()
         self.root.bind("<F1>", lambda e: self.show_diagnose())
         self.refresh_all()
+        self.selfcheck()
         root.after(1200, self.tick)
         if not self.conf.get("guide_done"):
             root.after(500, self.show_guide)
@@ -89,7 +90,7 @@ class App:
             return 96
 
     def _geometry(self):
-        w, h = int(1060 * self.scale), int(860 * self.scale)
+        w, h = int(1060 * self.scale), int(940 * self.scale)
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
         w = min(w, int(sw * 0.95))
@@ -180,6 +181,10 @@ class App:
                   activebackground=LINE, activeforeground=TXT, relief="flat", bd=0,
                   cursor="hand2", padx=self.px(10), pady=self.px(2),
                   command=self.show_guide).pack(side="right", padx=(0, self.px(6)))
+        tk.Button(head, text="重置", font=(FF, max(8, int(9 * s))), bg=CARD2, fg=ACC,
+                  activebackground=LINE, activeforeground=ACC, relief="flat", bd=0,
+                  cursor="hand2", padx=self.px(10), pady=self.px(2),
+                  command=self.reset_all).pack(side="right", padx=(0, self.px(6)))
         self.mon_box = ttk.Combobox(head, state="readonly", width=35,
                                     font=(FF, max(8, int(9 * s))))
         self.mon_box.pack(side="right", padx=(0, self.px(8)))
@@ -216,12 +221,18 @@ class App:
                              cursor="hand2", command=self.toggle, height=2)
         self.big.pack(fill="x", padx=self.px(14), pady=(0, self.px(8)))
 
-        tk.Button(c1, text="⚡ 一键全套：4:3 + 职业设置 + 系统优化",
-                  font=(FF, max(8, int(10 * s)), "bold"), bg=CARD2, fg=TXT,
-                  activebackground=LINE, activeforeground=TXT, relief="flat", bd=0,
-                  cursor="hand2", height=2,
-                  command=self.one_click).pack(fill="x", padx=self.px(14),
-                                               pady=(0, self.px(8)))
+        row0 = tk.Frame(c1, bg=CARD)
+        row0.pack(fill="x", padx=self.px(14), pady=(0, self.px(8)))
+        tk.Button(row0, text="一键全套", font=(FF, max(8, int(10 * s)), "bold"),
+                  bg=CARD2, fg=TXT, activebackground=LINE, activeforeground=TXT,
+                  relief="flat", bd=0, cursor="hand2", height=2,
+                  command=self.one_click).pack(side="left", fill="x", expand=True,
+                                               padx=(0, self.px(5)))
+        tk.Button(row0, text="去黑边", font=(FF, max(8, int(10 * s)), "bold"),
+                  bg=CARD2, fg=WARN, activebackground=LINE, activeforeground=WARN,
+                  relief="flat", bd=0, cursor="hand2", height=2,
+                  command=self.one_tap_letterbox).pack(side="left", fill="x",
+                                                       expand=True)
         self.auto_var = tk.BooleanVar(value=bool(self.conf.get("auto")))
         tk.Checkbutton(c1, text="自动切换：进游戏切 4:3，退游戏切回日常",
                        variable=self.auto_var, bg=CARD, fg=SUB, selectcolor=CARD2,
@@ -276,7 +287,7 @@ class App:
 
         tip = ("1280×960 在 2K 屏上是横向拉伸 1.33 倍，等同 1080p 屏上的 1440×1080。\n"
                "想更宽用 1024×768，想更清晰用 1440×1080。\n"
-               "切完如果左右有黑边，是显卡缩放没设成「全屏 + GPU」，不是分辨率的问题。")
+               "切完如果左右有黑边，点上面的「去黑边」，不是分辨率的问题。")
         tk.Label(c2, text=tip, bg=CARD, fg=DIM, font=(FF, max(7, int(8 * s))),
                  justify="left", anchor="w", wraplength=self.px(460)).pack(
             side="bottom", fill="x", padx=self.px(14), pady=(0, self.px(10)))
@@ -353,24 +364,32 @@ class App:
 
         nrow = tk.Frame(c4, bg=CARD)
         nrow.pack(fill="x", padx=self.px(14), pady=(0, self.px(10)))
-        tk.Button(nrow, text="打开显卡缩放设置（解决黑边）", font=(FF, max(8, int(9 * s))),
+        tk.Button(nrow, text="打开显卡缩放设置（去黑边没用时再用）",
+                  font=(FF, max(8, int(9 * s))),
                   bg=CARD2, fg=TXT, activebackground=LINE, relief="flat", bd=0,
                   cursor="hand2", pady=self.px(3),
                   command=self.open_nvidia).pack(fill="x")
 
         # ---------------- 右：提示
-        c5 = Card(right, "卡在黑边？")
+        c5 = Card(right, "还有黑边？")
         c5.pack(fill="both", expand=True, pady=(self.px(10), 0))
-        txt = ("4:3 能不能铺满屏幕，由显卡驱动决定，不是这个软件决定的：\n"
-               "显卡控制面板 → 显示 → 调整桌面尺寸和位置\n"
-               "    ① 缩放模式 = 全屏\n"
-               "    ② 勾选「覆盖游戏和程序设置的缩放模式」\n"
-               "    ③ 执行缩放 = GPU\n"
-               "设一次永久有效，之后每台 4:3 都会自动拉满。")
+        txt = ("先点左边的「去黑边」。\n"
+               "它会自动做完三件事：切 4:3、把显卡缩放设成拉伸、\n"
+               "关掉游戏配置里的黑边开关。\n"
+               "大多数机器到这一步就铺满了。\n\n"
+               "还是没铺满，再点下面这个按钮，\n"
+               "按里面的顺序一条条查。")
         tk.Label(c5, text=txt, bg=CARD, fg=SUB, font=(FF, max(8, int(9 * s))),
                  justify="left", anchor="w",
                  wraplength=self.px(430)).pack(fill="x", padx=self.px(14),
                                                pady=(0, self.px(4)))
+        tk.Button(c5, text="点过去黑边还是没铺满？点这里",
+                  font=(FF, max(7, int(8 * s))), bg=CARD2, fg=WARN,
+                  activebackground=LINE, activeforeground=WARN, relief="flat",
+                  bd=0, cursor="hand2", anchor="w",
+                  command=self.show_letterbox_help).pack(fill="x",
+                                                         padx=self.px(14),
+                                                         pady=(0, self.px(6)))
         self.top_var = tk.BooleanVar(value=bool(self.conf.get("topmost")))
         tk.Checkbutton(c5, text="窗口置顶（方便边玩边点）", variable=self.top_var,
                        bg=CARD, fg=SUB, selectcolor=CARD2, activebackground=CARD,
@@ -388,6 +407,28 @@ class App:
         state.log(msg)
 
     # ------------------------------------------------------------ 刷新
+
+    def selfcheck(self):
+        """兜底：上次异常退出（强杀 / 关机 / 断电）可能把 4:3 留在系统里"""
+        if not self.mon:
+            return
+        c = self.mon["current"] or {}
+        g = self.conf["game"]
+        if (c.get("w"), c.get("h")) != (g["w"], g["h"]):
+            return
+        if game.game_running():
+            return
+        n = self.conf.get("native") or {}
+        nw = n.get("w") or core.native_of(self.mon)[0]
+        nh = n.get("h") or core.native_of(self.mon)[1]
+        ok, msg = core.set_mode(self.mon, nw, nh, n.get("hz"), persist=True)
+        try:
+            core.set_scaling(False, device=self.mon.get("device"))
+        except Exception:
+            pass
+        self.say("检测到上次退出时残留 4:3，已自动切回 %d×%d" % (nw, nh),
+                 "warn" if ok else "err")
+        self.refresh_all()
 
     def refresh_all(self):
         self.refresh_monitors_box()
@@ -486,7 +527,7 @@ class App:
         st = sysx.state()
         for k, b in self.sys_rows.items():
             on = st.get(k)
-            b.configure(text="已优化" if on else "未优化",
+            b.configure(text="✓ 已优化" if on else "未优化",
                         bg="#16302a" if on else CARD2,
                         fg=OKC if on else SUB)
         self.power_lbl.configure(text="电源计划  " + st.get("_power", "未知"))
@@ -728,6 +769,10 @@ class App:
 
     def one_click(self):
         g = self.conf["game"]
+        # 第一次优化前先记下用户原来的样子，恢复默认时才能回到"他自己的原值"
+        if not self.conf.get("sys_snapshot"):
+            self.conf["sys_snapshot"] = sysx.snapshot()
+            state.save(self.conf)
         self.apply_mode(g["w"], g["h"], g.get("hz"), "① 4:3")
         okn, detail = sysx.optimize_all()
         self.say("② 系统优化 %d/%d 项" % (okn, len(sysx.items())), "ok")
@@ -738,6 +783,151 @@ class App:
             self.say("③ 游戏正在运行，跳过写配置（退出后点「写入游戏设置」）", "warn")
         else:
             self.write_game()
+
+    def reset_all(self):
+        """恢复全部默认：分辨率、缩放、系统优化项、游戏配置、软件设置"""
+        if not messagebox.askyesno(
+                "恢复全部默认",
+                "会把这台机器还原成你没用过这个软件之前的样子：\n\n"
+                "① 分辨率切回显示器原生\n"
+                "② 显卡缩放恢复「不缩放」\n"
+                "③ 鼠标加速、粘滞键、GameDVR、游戏模式、电源计划全部还原\n"
+                "④ 无畏契约配置从最近一次备份恢复\n"
+                "⑤ 软件自己的设置清空（记住的分辨率、自动切换等）\n\n"
+                "游戏正在运行时第 ④ 步会跳过。\n"
+                "确定要恢复吗？", icon="warning"):
+            return
+
+        done, bad = [], []
+
+        # ① 分辨率 ② 缩放
+        if self.mon:
+            n = self.conf.get("native") or {}
+            nw = n.get("w") or core.native_of(self.mon)[0]
+            nh = n.get("h") or core.native_of(self.mon)[1]
+            ok, msg = core.set_mode(self.mon, nw, nh, n.get("hz"), persist=True)
+            done.append("① 分辨率 → %s%s" % (msg, "" if ok else "（失败）"))
+            if not ok:
+                bad.append("分辨率切换失败：" + msg)
+            sok, smsg = core.set_scaling(False, device=self.mon.get("device"))
+            done.append("② 缩放 → %s" % smsg)
+        else:
+            done.append("①② 没有可用显示器，跳过")
+
+        # ③ 系统项
+        okn, detail = sysx.apply_snapshot(self.conf.get("sys_snapshot"))
+        done.append("③ 系统项 → 还原 %d 项" % okn)
+        done.extend("     " + d for d in detail)
+        if okn < len(sysx.items()):
+            bad.append("部分系统项没还原成功，见上面明细")
+
+        # ④ 游戏配置
+        gi = self.game["game_ini"]
+        if not gi:
+            done.append("④ 游戏配置 → 没找到配置文件，跳过")
+        elif game.game_running():
+            done.append("④ 游戏配置 → 游戏正在运行，跳过（退出后再点一次）")
+            bad.append("游戏配置未恢复：游戏在运行")
+        else:
+            latest = game.latest_backup(state.BACKUP_DIR)
+            if not latest:
+                done.append("④ 游戏配置 → 没有可用备份")
+            else:
+                ui = game.pick_user_ini(self.game["user_inis"],
+                                        self.conf.get("user_ini"))
+                n = game.restore(latest, gi, ui)
+                done.append("④ 游戏配置 → 从 %s 还原 %d 个文件"
+                            % (os.path.basename(latest), n))
+                if not n:
+                    bad.append("游戏配置还原失败，备份目录里没有目标文件")
+
+        # ⑤ 软件设置
+        keep_native = self.conf.get("native")
+        self.conf = state.fresh()
+        if keep_native:
+            self.conf["native"] = keep_native
+        self.conf["guide_done"] = True      # 别因为重置又弹一次引导
+        state.save(self.conf)
+        done.append("⑤ 软件设置 → 已清空")
+        self.refresh_all()
+
+        for d in done:
+            self.say(d, "err" if "失败" in d or "跳过" in d else "ok")
+        tail = ("\n\n建议重启一次电脑，粘滞键这类注册表项要注销后才完全生效。"
+                if not bad else
+                "\n\n需要处理的问题：\n· " + "\n· ".join(bad) +
+                "\n\n建议重启一次电脑。")
+        messagebox.showinfo("恢复完成", "\n".join(done) + tail)
+
+    def one_tap_letterbox(self):
+        """给不会操作显卡面板的人用：能自动做的全做完，做不了的给出针对性指引"""
+        if not self.mon:
+            return
+        g = self.conf["game"]
+        ok, msg, (rw, rh) = core.fix_letterbox(self.mon, g["w"], g["h"], g.get("hz"))
+        self.say("① 分辨率与缩放：" + msg, "ok" if ok else "err")
+        if not ok:
+            messagebox.showerror("切换失败", msg)
+            return
+        self.refresh_all()
+
+        if game.game_running():
+            self.say("② 游戏正在运行，配置暂不能写", "warn")
+            messagebox.showwarning(
+                "先退出游戏",
+                "画面已经切好了。\n\n但游戏正在运行，配置文件写不进去——"
+                "游戏退出时会把内存里的旧设置写回文件，覆盖掉修改。\n\n"
+                "请完全退出无畏契约，再点一次「去黑边」。")
+            return
+
+        gi = self.game["game_ini"]
+        if not gi:
+            self.say("② 没找到游戏配置文件", "err")
+            messagebox.showwarning(
+                "没找到游戏配置",
+                "画面已经切好并拉伸了。\n\n但没找到无畏契约的配置文件，"
+                "游戏内的 letterbox 关不掉。\n"
+                "如果进游戏还有黑边，在游戏里把画面模式设成「全屏」。")
+            return
+
+        ui = game.pick_user_ini(self.game["user_inis"], self.conf.get("user_ini"))
+        game.backup([x for x in (gi, ui) if x], state.BACKUP_DIR,
+                    int(self.conf.get("backup_keep", 10)))
+        kv = game.apply_display(gi, rw, rh, fullscreen=True,
+                                no_vsync=True, stretch=True, unlock_fps=False)
+        good, bad = game.verify(gi, kv)
+        self.say("② 游戏配置：黑边已关闭" if good else "② 回读不一致：" + ",".join(bad),
+                 "ok" if good else "err")
+        self.refresh_banner()
+        self.refresh_ini_label()
+
+        tip = {
+            "nvidia": "NVIDIA 控制面板 → 显示 →「调整桌面尺寸和位置」\n"
+                      "　缩放模式选「全屏」\n"
+                      "　勾选「覆盖游戏和程序设置的缩放模式」\n"
+                      "　执行缩放选「GPU」",
+            "amd": "AMD Software → 显示 →\n"
+                   "　缩放模式选「整个面板」\n"
+                   "　关闭「保持宽高比」",
+            "intel": "Intel 显卡控制中心 → 显示 →\n"
+                     "　缩放选「拉伸到全屏」",
+            "unknown": "打开显卡控制面板 → 显示 / 缩放设置\n"
+                       "　缩放模式改「全屏」或「拉伸」\n"
+                       "　关闭「保持宽高比」",
+        }.get(core.gpu_vendor(self.mon), "")
+        messagebox.showinfo(
+            "去黑边完成",
+            "已经做完三件事：\n"
+            "· 切到 %d×%d\n"
+            "· 显卡缩放设成「拉伸填充」\n"
+            "· 游戏配置里的黑边开关已关\n\n"
+            "重启游戏看看：\n"
+            "· 已经铺满 → 完事，什么都不用再设\n"
+            "· 左右还有黑边 → 显卡里开着「覆盖游戏缩放」\n\n"
+            "按下面手动关掉，只做一次：\n\n%s\n\n"
+            "关掉这个窗口后，主界面右下角有个\n"
+            "「点过去黑边还是没铺满？点这里」，\n"
+            "里面是完整的排查顺序。" % (rw, rh, tip))
 
     # ------------------------------------------------------------ 自动切换
 
@@ -786,10 +976,10 @@ class App:
         top.configure(bg=CARD)
         top.transient(self.root)
         top.resizable(False, False)
-        steps = ("① 先解决黑边（只做一次）\n"
-                 "   显卡控制面板 → 显示 → 调整桌面尺寸和位置：\n"
-                 "   缩放模式选「全屏」，勾选「覆盖游戏和程序设置的缩放模式」，\n"
-                 "   执行缩放选「GPU」。不设这一步，4:3 会出左右黑边。\n\n"
+        steps = ("① 先点「去黑边」（只做一次）\n"
+                 "   它会自动做完三件事：切 4:3、把显卡缩放设成拉伸、\n"
+                 "   关掉游戏配置里的黑边开关。\n"
+                 "   点完重启游戏看看，大多数机器到这一步就铺满了。\n\n"
                  "② 选一个 4:3 分辨率\n"
                  "   点「1280×960」卡片，或者自己填宽高。\n\n"
                  "③ 让程序留在后台\n"
@@ -834,6 +1024,83 @@ class App:
             self.conf["guide_done"] = True
             state.save(self.conf)
 
+    def show_letterbox_help(self):
+        """「覆盖游戏缩放」灰掉时的排查清单——这是最常见的卡点"""
+        win = getattr(self, "_lb_win", None)
+        if win is not None and win.winfo_exists():
+            win.lift()
+            win.focus_force()
+            return
+        top = tk.Toplevel(self.root)
+        self._lb_win = top
+        top.title("去黑边没铺满？按这个查")
+        top.configure(bg=BG)
+        top.transient(self.root)
+        body = (
+            "　\n"
+            "第一步：先确认「去黑边」真的跑完了\n"
+            "────────────────────────\n\n"
+            "切回主界面点一次「去黑边」，然后看下面日志区最后两行：\n\n"
+            "· 写着「缩放已设为拉伸填充」\n"
+            "  → 已经生效了。进游戏前记得重启游戏，进游戏看是不是铺满。\n"
+            "    如果游戏里还是黑的，说明是游戏自己的 letterbox，\n"
+            "    确认日志里「游戏配置：黑边已关闭」也在。\n\n"
+            "· 写着「已提交但未生效，可能被显卡驱动接管」\n"
+            "  → 系统不接管缩放，得靠显卡面板。往下走第二步。\n\n"
+            "· 写着「系统拒绝了缩放变更（代码 xxx）」\n"
+            "  → 系统层面被拦，通常是权限或远程会话，往下走第二步。\n\n\n"
+            "　\n"
+            "第二步：还不行，按顺序排查\n"
+            "────────────────────────\n\n"
+            "①  先把分辨率切成 4:3，再回头看显卡面板\n"
+            "     不少驱动在「原生分辨率」下会把缩放相关选项整列灰掉。\n"
+            "     先在主界面切到 4:3，再打开面板看一次。\n\n"
+            "②  确认「选择显示器」选对了\n"
+            "     面板左上角有个显示器下拉框。多屏时必须选中你打游戏的那台，\n"
+            "     选错的话右边整列都是灰的。\n\n"
+            "③  笔记本内屏通常不支持\n"
+            "     内屏走的是 eDP，多数机型不给「覆盖游戏缩放」这个开关。\n"
+            "     这种情况只能外接显示器，或者接受内屏按比例显示。\n\n"
+            "④  别经过转接器 / 扩展坞\n"
+            "     USB-C 转 HDMI、KVM 切换器、老扩展坞都可能让缩放选项失效。\n"
+            "     换一根 DP 或 HDMI 直连再试一次。\n\n"
+            "⑤  驱动版本问题\n"
+            "     新版 NVIDIA App 把设置挪到了：设置 → 显示 → 缩放。\n"
+            "     太老的驱动根本没有这一项，更新一次就好。\n\n\n"
+            "　\n"
+            "小抄：显卡面板里到底要改哪一项\n"
+            "────────────────────────\n\n"
+            "NVIDIA：控制面板 → 显示 → 调整桌面尺寸和位置\n"
+            "　　　　缩放模式选「全屏」\n"
+            "　　　　勾选「覆盖游戏和程序设置的缩放模式」\n"
+            "　　　　执行缩放选「GPU」\n\n"
+            "AMD：Software → 显示\n"
+            "　　　　缩放模式选「整个面板」，关掉「保持宽高比」\n\n"
+            "Intel：显卡控制中心 → 显示 → 缩放 → 「拉伸到全屏」\n\n\n"
+            "　\n"
+            "最后一条：如果以上都不行\n"
+            "────────────────────────\n\n"
+            "把主界面按 F1 导出的诊断信息发给作者，里面带显示器型号、\n"
+            "显卡、当前缩放模式和日志，比截图有用得多。"
+        )
+        box = tk.Text(top, bg="#0a0c10", fg=SUB, font=(FF, 11), relief="flat", bd=0,
+                      padx=22, pady=18, wrap="word", highlightthickness=1,
+                      highlightbackground=LINE)
+        box.pack(fill="both", expand=True, padx=14, pady=(14, 8))
+        box.insert("1.0", body)
+        box.configure(state="disabled")
+        bar = tk.Frame(top, bg=BG)
+        bar.pack(fill="x", padx=14, pady=(0, 14))
+        tk.Button(bar, text="打开显卡设置", font=(FF, 10), bg=CARD2, fg=TXT,
+                  activebackground=LINE, relief="flat", bd=0, cursor="hand2",
+                  padx=16, pady=5, command=self.open_nvidia).pack(side="left")
+        tk.Button(bar, text="知道了", font=(FF, 10, "bold"), bg=ACC, fg="#fff",
+                  activebackground=ACC_DK, relief="flat", bd=0, cursor="hand2",
+                  padx=22, pady=5,
+                  command=lambda: (top.destroy(), setattr(self, "_lb_win", None))
+                  ).pack(side="right")
+        self.center_on_parent(top, self.px(760), self.px(680))
+
     def show_diagnose(self):
         text = state.diagnose(self.mon, {
             "游戏进程": "运行中" if game.game_running() else "未运行",
@@ -872,6 +1139,24 @@ class App:
                     "关掉它，以后进游戏就不会自动切成 4:3 了。\n\n仍然退出？"):
                 return
         self._closing = True
+        # 退出前还原分辨率：否则关机时系统会把 4:3 记成"上次状态"，下次开机卡在 4:3
+        try:
+            if self.mon:
+                c = self.mon["current"] or {}
+                g = self.conf["game"]
+                if (c.get("w"), c.get("h")) == (g["w"], g["h"]):
+                    n = self.conf.get("native") or {}
+                    nw = n.get("w") or core.native_of(self.mon)[0]
+                    nh = n.get("h") or core.native_of(self.mon)[1]
+                    ok, msg = core.set_mode(self.mon, nw, nh, n.get("hz"),
+                                            persist=True)
+                    try:
+                        core.set_scaling(False, device=self.mon.get("device"))
+                    except Exception:
+                        pass
+                    state.log("退出还原：%s %s" % (ok, msg))
+        except Exception:
+            state.log("退出还原失败：\n" + traceback.format_exc())
         try:
             self.conf["monitor_id"] = self.mon["monitor_id"] if self.mon else None
             state.save(self.conf)
