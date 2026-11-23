@@ -270,8 +270,10 @@ def items():
         _item("gamebar", "关掉 Xbox Game Bar 弹窗",
               "Win+G / 手柄 Home 键不再跳出来",
               gamebar_clean, lambda on: set_gamebar_clean(on)),
-        _item("gpu_scale", "缩放由 GPU 执行（禁用显示器缩放）",
-              "教程里的「全屏 + GPU」：4:3 拉伸更快更稳",
+        _item("gpu_scale", "禁用监视器（缩放交给 GPU）",
+              "教程里的「全屏 + GPU / 禁用监视器缩放」：\n"
+              "4:3 由显卡拉伸而不是显示器，更快更稳。\n"
+              "切到 4:3 后开关才真正生效；在原生分辨率下显卡不参与缩放，点了不会有变化",
               gpu_scaling_on, lambda on: set_gpu_scaling(on)),
         _item("gamemode", "Windows 游戏模式",
               "建议开启，让前台游戏优先占用资源",
