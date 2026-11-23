@@ -247,91 +247,6 @@ def set_gpu_scaling(on):
     return False, msg
 
 
-# ---------------------------------------------------------------- 监视器设备禁用/启用
-# 教程里「禁用监视器」指在设备管理器禁用「通用即插即用监视器」设备：
-# 让 Windows 不再让显示器自己处理缩放，交给 GPU。需要管理员权限（UAC）。
-
-import base64 as _b64
-import json as _json
-
-PROBLEM_DISABLED = 22      # CM_PROB_DISABLED
-
-
-def _ps(script, timeout=40):
-    r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-                       capture_output=True, timeout=timeout,
-                       creationflags=NO_WINDOW)
-    return r.stdout.decode("utf-8", "replace"), r.stderr.decode("utf-8", "replace")
-
-
-def monitor_device_info():
-    """返回 (friendly_name, instance_id, disabled)；读不到返回 None"""
-    try:
-        out, err = _ps("Get-PnpDevice -Class Monitor | Where-Object Present | "
-                       "ConvertTo-Json -Compress")
-        data = _json.loads(out) if out.strip() else None
-        if isinstance(data, dict):
-            data = [data]
-        if not data:
-            return None
-        # 优先取状态非 Error 的；禁用设备 Status=Error/Problem=22
-        pick = None
-        for d in data:
-            if d.get("Problem") == PROBLEM_DISABLED:
-                pick = d
-                break
-        if pick is None:
-            pick = data[0]
-        return (pick.get("FriendlyName") or "监视器",
-                pick.get("InstanceId"), pick.get("Problem") == PROBLEM_DISABLED)
-    except Exception:
-        return None
-
-
-def set_monitor_disabled(disable, instance_id):
-    """
-    禁用/启用监视器设备。必须走 UAC 提权（用户点「是」），
-    用 EncodedCommand 避免引号嵌套。提权后 PowerShell 的输出/报错
-    写到 %LOCALAPPDATA%\\ValoSetup\\elevate_result.txt，方便排查。
-    返回 (ok, msg)
-    """
-    result_file = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
-                               "ValoSetup", "elevate_result.txt")
-    try:
-        os.makedirs(os.path.dirname(result_file), exist_ok=True)
-        open(result_file, "w").write("")
-    except OSError:
-        pass
-    verb = "Disable-PnpDevice" if disable else "Enable-PnpDevice"
-    inner = ('try { %s -InstanceId "%s" -Confirm:$false 2>&1 | '
-             'Out-File "%s" -Encoding utf8 } '
-             'catch { $_ | Out-File "%s" -Encoding utf8 }'
-             % (verb, instance_id, result_file, result_file))
-    enc = _b64.b64encode(inner.encode("utf-16-le")).decode("ascii")
-    outer = ('Start-Process powershell -Verb runas -Wait -WindowStyle Hidden '
-             '-ArgumentList \'-NoProfile -EncodedCommand %s\'' % enc)
-    try:
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                            outer], capture_output=True, timeout=120,
-                           creationflags=NO_WINDOW)
-    except Exception as e:      # noqa: BLE001
-        return False, repr(e)
-    # 提权命令的真实输出
-    detail = ""
-    try:
-        detail = open(result_file, encoding="utf-8-sig", errors="replace").read().strip()
-    except OSError:
-        pass
-    # 验证实际状态
-    info = monitor_device_info()
-    if info and info[2] == disable:
-        return True, ("已禁用" if disable else "已启用")
-    if not detail:
-        return False, ("UAC 未确认或提权命令没有执行"
-                       if r.returncode not in (0,) else "已提交但状态未变化")
-    return False, "错误：" + detail[:200]
-
-
 # ---------------------------------------------------------------- 结构化条目
 
 def _item(key, label, hint, getter, setter, note=""):
@@ -355,9 +270,8 @@ def items():
         _item("gamebar", "关掉 Xbox Game Bar 弹窗",
               "Win+G / 手柄 Home 键不再跳出来",
               gamebar_clean, lambda on: set_gamebar_clean(on)),
-        _item("gpu_scale", "禁用监视器（缩放交给 GPU）",
-              "教程里的「全屏 + GPU / 禁用监视器缩放」：\n"
-              "4:3 由显卡拉伸而不是显示器，更快更稳。\n"
+        _item("gpu_scale", "缩放由 GPU 执行",
+              "教程里的「全屏 + GPU」：4:3 由显卡拉伸而不是显示器，更快更稳。\n"
               "切到 4:3 后开关才真正生效；在原生分辨率下显卡不参与缩放，点了不会有变化",
               gpu_scaling_on, lambda on: set_gpu_scaling(on)),
         _item("gamemode", "Windows 游戏模式",

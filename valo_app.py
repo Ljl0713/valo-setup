@@ -414,27 +414,6 @@ class App:
             b.pack(side="right")
             self.sys_rows[it["key"]] = b
 
-        # 监视器设备禁用（需 UAC 提权，单独处理）
-        drow = tk.Frame(c4, bg=CARD)
-        drow.pack(fill="x", padx=self.px(14), pady=self.px(2))
-        self.mondev_lbl = tk.Label(drow, text="禁用监视器设备", bg=CARD, fg=TXT,
-                                   font=(FF, max(8, int(9 * s))), anchor="w")
-        self.mondev_lbl.pack(side="left")
-        qd = tk.Label(drow, text=" ?", bg=CARD, fg=DIM,
-                      font=(FF, max(7, int(8 * s))), cursor="hand2")
-        qd.pack(side="left")
-        Tip.bind(qd, "教程里的「禁用监视器」：在设备管理器里禁用"
-                 "「通用即插即用监视器」设备，让缩放完全交给显卡。\n\n"
-                 "· 每次切换都会弹 UAC 管理员确认，需要你点「是」\n"
-                 "· 屏幕会闪一下，短暂黑屏是正常的\n"
-                 "· 这是教程里的一次性步骤，设好后不用反复切\n"
-                 "· 万一画面不回来：等 10 秒，或重启电脑自动恢复")
-        self.btn_mondev = tk.Button(drow, text="", font=(FF, max(7, int(8 * s))),
-                                    bg=CARD2, fg=SUB, relief="flat", bd=0,
-                                    cursor="hand2", width=5,
-                                    command=self.flip_mondev)
-        self.btn_mondev.pack(side="right")
-
         prow = tk.Frame(c4, bg=CARD)
         prow.pack(fill="x", padx=self.px(14), pady=(self.px(6), self.px(4)))
         self.power_lbl = tk.Label(prow, text="", bg=CARD, fg=SUB,
@@ -628,17 +607,6 @@ class App:
                         bg="#16302a" if on else CARD2,
                         fg=OKC if on else SUB)
         self.power_lbl.configure(text="电源计划  " + st.get("_power", "未知"))
-        # 监视器设备状态（PowerShell 查询，只在操作后/启动时刷新）
-        info = sysx.monitor_device_info()
-        if info:
-            name, _iid, disabled = info
-            self.btn_mondev.configure(text="禁用中" if disabled else "正常",
-                                      bg="#16302a" if disabled else CARD2,
-                                      fg=OKC if disabled else SUB)
-            self.mondev_lbl.configure(
-                text="禁用监视器设备（%s）" % (name[:14] + "…" if len(name) > 14 else name))
-        else:
-            self.btn_mondev.configure(text="未知", bg=CARD2, fg=SUB)
 
     def refresh_ini_label(self):
         if game.game_running():
@@ -926,36 +894,6 @@ class App:
                 break
         self.refresh_sys()
 
-    def flip_mondev(self):
-        """禁用/启用监视器设备：弹 UAC，等结果，刷新"""
-        info = sysx.monitor_device_info()
-        if not info:
-            messagebox.showwarning("读不到监视器设备",
-                                   "用 PowerShell 查询设备失败。\n"
-                                   "可以在设备管理器里手动操作：\n"
-                                   "监视器 → 通用即插即用监视器 → 右键 禁用/启用")
-            return
-        name, iid, disabled = info
-        target = not disabled
-        if not messagebox.askyesno(
-                "%s监视器设备" % ("禁用" if target else "启用"),
-                "即将%s：%s\n\n"
-                "· 需要在弹出的 UAC 窗口点「是」（管理员权限）\n"
-                "· 屏幕会闪一下，短暂黑屏是正常现象\n"
-                "· %s后想改回来，再点一次这个开关\n"
-                "· 万一画面不回来：等 10 秒，或重启电脑自动恢复\n\n"
-                "继续吗？" % ("禁用" if target else "启用", name,
-                             "禁用" if target else "启用"),
-                icon="warning"):
-            return
-        self.say("%s监视器设备：请在 UAC 窗口点「是」…" % ("禁用" if target else "启用"),
-                 "warn")
-        ok, msg = sysx.set_monitor_disabled(target, iid)
-        self.say("%s监视器设备%s：%s" % ("禁用" if target else "启用",
-                                    "成功" if ok else "失败", msg),
-                 "ok" if ok else "err")
-        self.refresh_sys()
-
     def set_power(self):
         plan = sysx.best_power_plan()
         if not plan:
@@ -994,25 +932,6 @@ class App:
         for d in detail:
             self.say("   " + d, "warn")
         self.refresh_sys()
-        # ③ 监视器设备禁用：教程的一次性步骤；会弹 UAC，用户可取消
-        info = sysx.monitor_device_info()
-        if info and not info[2]:
-            if messagebox.askyesno(
-                    "③ 禁用监视器设备",
-                    "一键全套包含教程里的「禁用监视器」步骤。\n"
-                    "即将禁用：%s\n\n"
-                    "· 需要在 UAC 窗口点「是」\n"
-                    "· 屏幕会闪一下\n"
-                    "· 这是一次性设置，以后想恢复用系统卡里的开关\n\n"
-                    "继续吗？", icon="warning"):
-                ok, msg = sysx.set_monitor_disabled(True, info[1])
-                self.say("③ 监视器设备：%s" % msg, "ok" if ok else "err")
-            else:
-                self.say("③ 已跳过监视器设备禁用", "warn")
-        elif info:
-            self.say("③ 监视器设备已是禁用状态", "ok")
-        else:
-            self.say("③ 读不到监视器设备，跳过", "warn")
         if game.game_running():
             self.say("③ 游戏正在运行，跳过写配置（退出后点「写入游戏设置」）", "warn")
         else:
