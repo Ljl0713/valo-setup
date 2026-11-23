@@ -423,14 +423,7 @@ class App:
                   fg=SUB, activebackground=LINE, relief="flat", bd=0, cursor="hand2",
                   padx=self.px(6), command=self.set_power).pack(side="right")
 
-        nrow = tk.Frame(c4, bg=CARD)
-        nrow.pack(fill="x", padx=self.px(14), pady=(0, self.px(10)))
-        tk.Button(nrow, text="打开显卡缩放设置（去黑边没用时再用）",
-                  font=(FF, max(8, int(9 * s))),
-                  bg=CARD2, fg=TXT, activebackground=LINE, relief="flat", bd=0,
-                  cursor="hand2", pady=self.px(3),
-                  command=self.open_nvidia).pack(fill="x")
-
+        tk.Label(c4, text="", bg=CARD).pack(fill="x", pady=(0, self.px(8)))
         # ---------------- 右：提示
         c5 = Card(right, "还有黑边？")
         c5.pack(fill="both", expand=True, pady=(self.px(10), 0))
@@ -599,7 +592,6 @@ class App:
             fg=DIM if ok else WARN)
 
     def refresh_sys(self):
-        sysx.set_target_device((self.mon or {}).get("device"))
         st = sysx.state()
         for k, b in self.sys_rows.items():
             on = st.get(k)

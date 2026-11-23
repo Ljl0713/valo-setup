@@ -209,44 +209,6 @@ def open_nvidia_panel():
         return False
 
 
-# ---------------------------------------------------------------- GPU 缩放（禁用显示器缩放）
-
-_target_dev = [None]      # 当前操作的显示器（\Device\DISPLAYx），由 UI 设置
-
-
-def set_target_device(device_name):
-    """UI 切换显示器时调用，让 gpu_scale 知道作用于哪块屏"""
-    _target_dev[0] = device_name
-
-
-def gpu_scaling_on():
-    """缩放是否由 GPU 执行（=「拉伸填充」生效且未被驱动接管）"""
-    import valo_core as core
-    m = core.scaling_modes(_target_dev[0] or None)
-    if not m:
-        return False
-    return core.SC_STRETCH in m
-
-
-def set_gpu_scaling(on):
-    import valo_core as core
-    ok, msg = core.set_scaling(bool(on), persist=False, device=_target_dev[0] or None)
-    if ok:
-        return True, msg
-    if on:
-        # 驱动会拒绝「不缩放 → 拉伸」的直改；重新提交当前分辨率可触发默认拉伸
-        try:
-            m = core.pick(None, core.monitors())
-            cur = m["current"] or {}
-            core.set_mode(m, cur.get("w"), cur.get("h"), cur.get("hz"))
-            after = core.scaling_modes(_target_dev[0] or None) or []
-            if core.SC_STRETCH in after:
-                return True, "已恢复拉伸填充（重新应用分辨率）"
-        except Exception:
-            pass
-    return False, msg
-
-
 # ---------------------------------------------------------------- 结构化条目
 
 def _item(key, label, hint, getter, setter, note=""):
@@ -270,10 +232,6 @@ def items():
         _item("gamebar", "关掉 Xbox Game Bar 弹窗",
               "Win+G / 手柄 Home 键不再跳出来",
               gamebar_clean, lambda on: set_gamebar_clean(on)),
-        _item("gpu_scale", "缩放由 GPU 执行",
-              "教程里的「全屏 + GPU」：4:3 由显卡拉伸而不是显示器，更快更稳。\n"
-              "切到 4:3 后开关才真正生效；在原生分辨率下显卡不参与缩放，点了不会有变化",
-              gpu_scaling_on, lambda on: set_gpu_scaling(on)),
         _item("gamemode", "Windows 游戏模式",
               "建议开启，让前台游戏优先占用资源",
               gamemode_on, lambda on: set_gamemode(on)),
