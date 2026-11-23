@@ -221,15 +221,30 @@ def set_target_device(device_name):
 
 def gpu_scaling_on():
     """缩放是否由 GPU 执行（=「拉伸填充」生效且未被驱动接管）"""
-    m = scaling_modes(_target_dev[0] or None)
+    import valo_core as core
+    m = core.scaling_modes(_target_dev[0] or None)
     if not m:
         return False
-    return SC_STRETCH in m
+    return core.SC_STRETCH in m
 
 
 def set_gpu_scaling(on):
-    ok, msg = set_scaling(bool(on), persist=False, device=_target_dev[0] or None)
-    return ok, msg
+    import valo_core as core
+    ok, msg = core.set_scaling(bool(on), persist=False, device=_target_dev[0] or None)
+    if ok:
+        return True, msg
+    if on:
+        # 驱动会拒绝「不缩放 → 拉伸」的直改；重新提交当前分辨率可触发默认拉伸
+        try:
+            m = core.pick(None, core.monitors())
+            cur = m["current"] or {}
+            core.set_mode(m, cur.get("w"), cur.get("h"), cur.get("hz"))
+            after = core.scaling_modes(_target_dev[0] or None) or []
+            if core.SC_STRETCH in after:
+                return True, "已恢复拉伸填充（重新应用分辨率）"
+        except Exception:
+            pass
+    return False, msg
 
 
 # ---------------------------------------------------------------- 结构化条目
@@ -240,27 +255,27 @@ def _item(key, label, hint, getter, setter, note=""):
 
 
 def items():
-    """系统优化项：UI 直接遍历渲染成开关，optimize_all 一次全开"""
+    """系统优化项：UI 渲染成开关。set 接受 bool（True=优化态），flip 会传反向值"""
     return [
         _item("mouse", "关闭鼠标加速",
               "指针移动与手感线性对应，FPS 必做",
-              lambda: not mouse_accel_on(), lambda: set_mouse_accel(True)),
+              lambda: not mouse_accel_on(), lambda on: set_mouse_accel(on)),
         _item("sticky", "关闭粘滞键/切换键快捷键",
               "连按 Shift 五下不再弹窗打断游戏",
               lambda: not sticky_hotkeys_on(),
-              lambda: set_sticky_hotkeys(True), note="注销后生效"),
+              lambda on: set_sticky_hotkeys(on), note="注销后生效"),
         _item("fse", "关闭全屏优化（真独占）",
               "少一层桌面合成，输入延迟低一档",
-              fse_optimized, lambda: set_fse_optimized(True)),
+              fse_optimized, lambda on: set_fse_optimized(on)),
         _item("gamebar", "关掉 Xbox Game Bar 弹窗",
               "Win+G / 手柄 Home 键不再跳出来",
-              gamebar_clean, lambda: set_gamebar_clean(True)),
+              gamebar_clean, lambda on: set_gamebar_clean(on)),
         _item("gpu_scale", "缩放由 GPU 执行（禁用显示器缩放）",
               "教程里的「全屏 + GPU」：4:3 拉伸更快更稳",
-              gpu_scaling_on, lambda: set_gpu_scaling(True)),
+              gpu_scaling_on, lambda on: set_gpu_scaling(on)),
         _item("gamemode", "Windows 游戏模式",
               "建议开启，让前台游戏优先占用资源",
-              gamemode_on, lambda: set_gamemode(True)),
+              gamemode_on, lambda on: set_gamemode(on)),
     ]
 
 
@@ -280,7 +295,7 @@ def optimize_all():
     ok, detail = 0, []
     for it in items():
         try:
-            it["set"]()
+            it["set"](True)
             ok += 1
         except Exception as e:
             detail.append("%s: %r" % (it["label"], e))

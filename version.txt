@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(2, 1, 0, 0),
-    prodvers=(2, 1, 0, 0),
+    filevers=(2, 2, 0, 0),
+    prodvers=(2, 2, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -16,12 +16,12 @@ VSVersionInfo(
           '080404B0',
           [StringStruct('CompanyName', 'VALO SETUP'),
            StringStruct('FileDescription', '无畏契约 4:3 拉伸与职业设置工具'),
-           StringStruct('FileVersion', '2.1.0.0'),
+           StringStruct('FileVersion', '2.2.0.0'),
            StringStruct('InternalName', 'ValoSetup'),
            StringStruct('LegalCopyright', '免费分享，请勿倒卖'),
            StringStruct('OriginalFilename', 'ValoSetup.exe'),
            StringStruct('ProductName', 'VALO SETUP'),
-           StringStruct('ProductVersion', '2.1.0.0')])
+           StringStruct('ProductVersion', '2.2.0.0')])
       ]
     ),
     VarFileInfo([VarStruct('Translation', [2052, 1200])])

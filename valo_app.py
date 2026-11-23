@@ -869,13 +869,26 @@ class App:
     # ------------------------------------------------------------ 动作：系统
 
     def flip(self, key):
+        """真正的开关：读当前状态，反向设置；驱动返回的原因透传给用户"""
         for it in sysx.items():
             if it["key"] == key:
                 try:
-                    it["set"]()
-                    self.say("已应用：%s%s" % (it["label"],
-                                              ("（%s）" % it["note"]) if it.get("note") else ""),
-                             "ok")
+                    was_on = bool(it["get"]())
+                    ret = it["set"](not was_on)
+                    now = bool(it["get"]())
+                    if now and not was_on:
+                        verb = "开启"
+                    elif was_on and not now:
+                        verb = "关闭"
+                    else:
+                        verb = "未变化"
+                    extra = ""
+                    if isinstance(ret, tuple) and len(ret) == 2 and ret[1]:
+                        extra = "（%s）" % ret[1]
+                    self.say("%s：%s%s%s" % (verb, it["label"],
+                                             ("（%s）" % it["note"]) if it.get("note") else "",
+                                             extra),
+                             "ok" if now != was_on else "warn")
                 except Exception as e:
                     self.say("设置失败 %s：%r" % (it["label"], e), "err")
                 break
